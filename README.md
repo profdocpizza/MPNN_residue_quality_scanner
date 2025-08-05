@@ -15,8 +15,8 @@ A simple Python script to score each residue in a PDB file using LigandMPNN or P
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/pdb-bfactor-annotator.git
-   cd pdb-bfactor-annotator
+   git clone https://github.com/profdocpizza/MPNN_residue_quality_scanner.git
+   cd MPNN_residue_quality_scanner
    ```
 2. Install dependencies (requires Python 3.8+):
    ```bash
