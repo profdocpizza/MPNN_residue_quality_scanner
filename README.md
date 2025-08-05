@@ -2,7 +2,7 @@
 
 A simple Python script to score each residue in a PDB file using LigandMPNN or ProteinMPNN, then annotate the B-factor column with the native-AA probabilities provided the surrounding backbone and sequence. This will tell you whether MPNN "agrees" with residue identities given the context.
 
-![Per-residue likelihoods heatmap](./images/likelihoods.png)
+![Per-residue likelihoods heatmap](./images/likelihoods_grid.png)
 
 ## Features
 
@@ -29,9 +29,8 @@ A simple Python script to score each residue in a PDB file using LigandMPNN or P
 python run_score_and_annotate.py     /path/to/input.pdb     /path/to/output_folder_for_scoring     /path/to/annotated_output.pdb
 ```
 
-- **input.pdb**: your original PDB file  
-- **output_folder_for_scoring**: directory where `score.py` will dump its `.pt` output  
-- **annotated_output.pdb**: path for the new PDB with B-factors set to native-AA probabilities  
+- **pdb_path**: path to input .pdb or dir with multiple .pdb files
+- **out_base**: directory where `score.py` will dump its `.pt` output and the new PDB with B-factors set to native-AA probabilities  
 
 After running, load the annotated PDB in PyMOL and use:
 ```pymol

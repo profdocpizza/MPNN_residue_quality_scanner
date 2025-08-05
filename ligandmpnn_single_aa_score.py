@@ -4,32 +4,43 @@ Run single‐residue scoring via score.py, then annotate your PDB’s B‐factor
 with the rounded (3-decimal) native–AA probabilities.
 
 Usage:
+    # Single file:
     python run_score_and_annotate.py \
         /path/to/input.pdb \
-        /path/to/output_folder_for_scoring \
-        /path/to/annotated_output.pdb
+        /path/to/out_base_dir \
+        /path/to/annotated_base_dir
+
+    # Directory of PDBs:
+    python run_score_and_annotate.py \
+        /path/to/pdb_dir \
+        /path/to/out_base_dir \
+        /path/to/annotated_base_dir
 
 This script:
-  1. Calls score.py to compute single‐AA scores (LigandMPNN/ProteinMPNN).
-  2. Locates the resulting .pt score file in the output folder.
-  3. Loads the .pt, extracts sequence, mean_probs_dict, and res_names.
-  4. Computes the probability of the native AA at each residue by looking up
-     mean_probs_dict[res_id][native_aa].
-  5. Reads the input PDB and replaces each atom’s B-factor (cols 61–66)
+  1. Scans the input path: if it's a .pdb file, processes that one; if it's a directory,
+     finds all .pdb files inside (non-recursively).
+  2. For each PDB, creates a per-structure output folder under out_base_dir/basename
+     and writes the annotated PDB to annotated_base_dir/basename_annotated.pdb.
+  3. Calls score.py to compute single‐AA scores (LigandMPNN/ProteinMPNN).
+  4. Loads the .pt, extracts sequence, mean_probs_dict, and res_names.
+  5. Computes the probability of the native AA at each residue.
+  6. Reads the input PDB and replaces each atom’s B-factor (cols 61–66)
      for those residues with the rounded score.
-  6. Writes out a new annotated PDB.
+  7. Writes out a new annotated PDB.
 """
 import argparse
 import subprocess
 import sys
 import os
 import torch
+from pathlib import Path
 
 model_type = "ligand_mpnn"  # or "protein_mpnn"
 
 
 def run_score(pdb_path: str, out_folder: str):
     """Call score.py to compute single‐amino‐acid scores."""
+    os.makedirs(out_folder, exist_ok=True)
     cmd = [
         sys.executable,
         "score.py",
@@ -49,8 +60,8 @@ def run_score(pdb_path: str, out_folder: str):
         "1",
         "--number_of_batches",
         "10",
-        "--homo_oligomer",
-        "1",
+        # "--homo_oligomer",
+        # "1",
     ]
     subprocess.run(cmd, check=True)
 
@@ -63,18 +74,16 @@ def find_pt_file(out_folder: str) -> str:
     return os.path.join(out_folder, files[0])
 
 
-def load_scores(pt_path: str) -> dict:
+def load_scores(pt_path: str):
     """
-    Load the .pt file and build a dict mapping residue IDs (e.g. 'A23')
-    to their rounded native-AA probability.
+    Load the .pt file and return alphabet, sequence, mean_probs, res_names
     """
     data = torch.load(pt_path, map_location="cpu")
     alphabet = data["alphabet"]
     sequence = data["sequence"]
     mean_probs = data["mean_of_probs"]
     res_names = data["residue_names"]
-
-    return alphabet, sequence, mean_probs, res_names
+    return sequence, mean_probs, res_names
 
 
 def get_current_res_mean_probs(sequence, mean_probs_dict, res_names):
@@ -114,31 +123,63 @@ def annotate_bfactor(pdb_in: str, scores: dict, pdb_out: str):
             fout.write(line)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Run score.py and annotate PDB B-factors"
-    )
-    parser.add_argument("pdb", help="Input PDB file to score and annotate")
-    parser.add_argument("out_folder", help="Folder with score.py output (.pt)")
-    parser.add_argument("annotated_pdb", help="Path for output annotated PDB")
-    args = parser.parse_args()
-
-    # 1) Run scoring
-    run_score(args.pdb, args.out_folder)
-
-    # 2) Locate and load score data
-    pt_file = find_pt_file(args.out_folder)
-    sequence, mean_probs_dict, res_names = load_scores(pt_file)
-
-    # 3) Compute per-residue native-AA probabilities
-    scores = get_current_res_mean_probs(sequence, mean_probs_dict, res_names)
-
-    # 4) Annotate B-factors and write new PDB
-    annotate_bfactor(args.pdb, scores, args.annotated_pdb)
+def process_single(
+    pdb_path: Path,
+    out_base: Path,
+):
+    """Process one PDB: score and annotate."""
+    name = pdb_path.stem
+    out_folder = out_base / name
+    annotated_path = out_base / f"{name}_annotated.pdb"
 
     print(
-        f"PDB written to: {args.annotated_pdb} with {model_type} likelihoods written as beta factor for each residue (provided full backbone and sequence). Open in pymol and write: \ncolor tv_blue; color skyblue, b<0.1; color tv_orange, b<0.08; color tv_red, b<0.03 "
+        f"Processing {pdb_path.name} -> scores in {out_folder}, annotated -> {annotated_path}"
     )
+    run_score(str(pdb_path), str(out_folder))
+    pt_file = find_pt_file(str(out_folder))
+    sequence, mean_probs_dict, res_names = load_scores(pt_file)
+    scores = get_current_res_mean_probs(sequence, mean_probs_dict, res_names)
+    annotate_bfactor(str(pdb_path), scores, str(annotated_path))
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Run score.py and annotate PDB B-factors on a file or directory"
+    )
+    parser.add_argument(
+        "input",
+        help="Input PDB file or directory of PDB files",
+    )
+    parser.add_argument(
+        "out_base",
+        help="Base directory for score.py outputs (per-PDB subfolders)",
+    )
+
+    args = parser.parse_args()
+
+    inp = Path(args.input)
+    out_base = Path(args.out_base)
+    out_base.mkdir(parents=True, exist_ok=True)
+
+    pdb_list = []
+    if inp.is_dir():
+        pdb_list = sorted(inp.glob("*.pdb"))
+        if not pdb_list:
+            print(f"No .pdb files found in directory {inp}")
+            sys.exit(1)
+    elif inp.is_file() and inp.suffix.lower() == ".pdb":
+        pdb_list = [inp]
+    else:
+        print(f"Error: {inp} is not a .pdb file or directory containing .pdb files.")
+        sys.exit(1)
+
+    for pdb_path in pdb_list:
+        try:
+            process_single(pdb_path, out_base)
+        except Exception as e:
+            print(f"Error processing {pdb_path.name}: {e}")
+
+    print("All done!")
 
 
 if __name__ == "__main__":
