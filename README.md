@@ -18,15 +18,13 @@ A simple Python script to score each residue in a PDB file using LigandMPNN or P
    git clone https://github.com/profdocpizza/MPNN_residue_quality_scanner.git
    cd MPNN_residue_quality_scanner
    ```
-2. Install dependencies (requires Python 3.8+):
-   ```bash
-   pip install torch biopython
-   ```
+2. Install ligandmpnn and its environment from [text](https://github.com/dauparas/LigandMPNN)
+3. Run this script from LigandMPNN directory.
 
 ## Usage
 
 ```bash
-python run_score_and_annotate.py     /path/to/input.pdb     /path/to/output_folder_for_scoring     /path/to/annotated_output.pdb
+python global/path/to/MPNN_residue_quality_scanner/run_score_and_annotate.py     /path/to/input.pdb     /path/to/output_folder_for_scoring     /path/to/annotated_output.pdb
 ```
 
 - **pdb_path**: path to input .pdb or dir with multiple .pdb files
